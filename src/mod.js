@@ -1,1 +1,1 @@
-export { compose, kit, svelte } from "./vite.js";
+export { compose, compose_config, kit, svelte } from "./vite.js";

@@ -7,6 +7,7 @@ import {
 import type { Plugin, PluginOption } from "vite";
 import {
   compose,
+  compose_config,
   kit,
   merge_svelte_configs,
   svelte,
@@ -200,6 +201,75 @@ Deno.test("compose throws a clear error for config contributions without kit", (
     Error,
     "kit(...)",
   );
+});
+
+Deno.test("compose collects Svelte config attached to plugin objects", () => {
+  const plugin = { name: "config-plugin" } as Plugin;
+
+  Object.defineProperty(plugin, "__svelte_plugin_composer_config", {
+    value: {
+      source: "config-plugin",
+      config: {
+        preprocess: [{ markup: () => undefined }],
+      },
+    },
+  });
+
+  assertThrows(
+    () =>
+      compose([plugin], {
+        diagnostics: false,
+      }),
+    Error,
+    "kit(...)",
+  );
+});
+
+Deno.test("compose external config mode accepts config without direct Kit config", () => {
+  const output = compose([svelte({ extensions: [".sv"] })], {
+    diagnostics: false,
+    svelte_config: "external",
+  });
+
+  assertEquals(output, []);
+});
+
+Deno.test("compose_config nests direct kit options for svelte config", () => {
+  const preprocessor = { markup: () => undefined };
+  const plugin = { name: "config-plugin" } as Plugin;
+
+  Object.defineProperty(plugin, "__svelte_plugin_composer_config", {
+    value: {
+      source: "config-plugin",
+      config: {
+        preprocess: [preprocessor],
+      },
+    },
+  });
+
+  const config = compose_config([
+    svelte({ extensions: [".svelte", ".sv"] }),
+    plugin,
+    kit({
+      adapter: "adapter",
+      compilerOptions: {
+        experimental: {
+          async: true,
+        },
+      },
+    }),
+  ]);
+
+  assertEquals(config.extensions, [".svelte", ".sv"]);
+  assertEquals(config.preprocess, [preprocessor]);
+  assertEquals(config.compilerOptions, {
+    experimental: {
+      async: true,
+    },
+  });
+  assertEquals(config.kit, {
+    adapter: "adapter",
+  });
 });
 
 Deno.test("compose throws a clear error for multiple kit slots", () => {

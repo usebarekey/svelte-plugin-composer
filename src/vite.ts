@@ -5,4 +5,4 @@ export type {
   ComposerSvelteConfig,
   PreOrderPolicy,
 } from "./internal.ts";
-export { compose, kit, svelte } from "./internal.ts";
+export { compose, compose_config, kit, svelte } from "./internal.ts";

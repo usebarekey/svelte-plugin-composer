@@ -2,10 +2,18 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import type { Plugin, PluginOption } from "vite";
 
 const contribution_key = "__svelte_plugin_composer";
+const plugin_config_key = "__svelte_plugin_composer_config";
 const kit_slot_key = "__svelte_plugin_composer_kit_slot";
 
 const svelte_config_keys = [
   "kit",
+  "extensions",
+  "preprocess",
+  "vitePlugin",
+  "compilerOptions",
+] as const;
+
+const direct_kit_svelte_keys = [
   "extensions",
   "preprocess",
   "vitePlugin",
@@ -53,6 +61,12 @@ export interface ComposeOptions {
    * decisions.
    */
   readonly diagnostics?: boolean;
+
+  /**
+   * Selects whether Svelte config fragments are passed directly to
+   * `sveltekit(...)` or loaded from `svelte.config.js`.
+   */
+  readonly svelte_config?: "direct" | "external";
 }
 
 /**
@@ -106,6 +120,7 @@ export type ComposerItem =
 interface ResolvedComposeOptions {
   readonly pre_order: PreOrderPolicy;
   readonly diagnostics: boolean;
+  readonly svelte_config: "direct" | "external";
 }
 
 interface PreOrderDiagnostic {
@@ -139,6 +154,11 @@ interface ComposeContext {
 
 interface KitSlot {
   readonly [kit_slot_key]: true;
+}
+
+interface PluginConfigContribution {
+  readonly source?: string;
+  readonly config?: ComposerSvelteConfig;
 }
 
 /**
@@ -179,7 +199,11 @@ export function compose(
     append_item(item, output, context);
   }
 
-  if (context.contributions.length > 0 && context.kit_slots === 0) {
+  if (
+    resolved_options.svelte_config === "direct" &&
+    context.contributions.length > 0 &&
+    context.kit_slots === 0
+  ) {
     throw new Error(
       [
         "[svelte-plugin-composer] Svelte config contributions were provided,",
@@ -198,7 +222,11 @@ export function compose(
   );
   const direct_config = to_direct_sveltekit_config(merged_config);
   const plugins = output.map((item) =>
-    is_kit_slot(item) ? sveltekit(direct_config) : item
+    is_kit_slot(item)
+      ? resolved_options.svelte_config === "external"
+        ? sveltekit()
+        : sveltekit(direct_config)
+      : item
   );
 
   /**
@@ -253,6 +281,28 @@ export function svelte(config: ComposerSvelteConfig): ComposerContribution {
     source: "svelte",
     config,
   };
+}
+
+/**
+ * Composes Svelte config fragments for `svelte.config.js`.
+ *
+ * @example
+ * ```ts
+ * export default compose_config([sv(), ts(), kit({ adapter })]);
+ * ```
+ *
+ * @since 0.1.0
+ * @param items - Config helpers, composer contributions, plugins with attached
+ *   config, and nested presets to collect.
+ * @returns A merged Svelte config object.
+ */
+export function compose_config(
+  items: readonly ComposerItem[],
+): ComposerSvelteConfig {
+  const contributions = collect_config_contributions(items);
+  const configs = contributions.map(to_svelte_config_contribution);
+
+  return merge_svelte_configs(configs);
 }
 
 /**
@@ -314,6 +364,35 @@ export function to_direct_sveltekit_config(
   return merge_plain_objects(direct_config, kit_config, []);
 }
 
+function direct_kit_config_to_svelte_config(
+  config: ComposerSvelteConfig,
+): ComposerSvelteConfig {
+  const svelte_config: ComposerSvelteConfig = {};
+  const kit_config: ComposerSvelteConfig = {};
+
+  for (const [key, value] of Object.entries(config)) {
+    if (key === "kit" && is_plain_object(value)) {
+      Object.assign(kit_config, clone_value(value));
+
+      continue;
+    }
+
+    if (is_direct_kit_svelte_key(key)) {
+      svelte_config[key] = clone_value(value);
+
+      continue;
+    }
+
+    kit_config[key] = clone_value(value);
+  }
+
+  if (Object.keys(kit_config).length > 0) {
+    svelte_config.kit = kit_config;
+  }
+
+  return svelte_config;
+}
+
 function append_item(
   item: ComposerItem,
   output: Array<PluginOption | KitSlot>,
@@ -343,7 +422,86 @@ function append_item(
     return;
   }
 
+  if (is_plugin_object(item)) {
+    append_plugin_config(item, context);
+  }
+
   output.push(normalize_plugin_option(item as PluginOption, context));
+}
+
+function collect_config_contributions(
+  items: readonly ComposerItem[],
+): CollectedContribution[] {
+  const contributions: CollectedContribution[] = [];
+
+  for (const item of items) {
+    collect_config_item(item, contributions);
+  }
+
+  return contributions;
+}
+
+function collect_config_item(
+  item: ComposerItem,
+  contributions: CollectedContribution[],
+): void {
+  if (!item) {
+    return;
+  }
+
+  if (Array.isArray(item)) {
+    for (const child of item) {
+      collect_config_item(child, contributions);
+    }
+
+    return;
+  }
+
+  if (is_composer_contribution(item)) {
+    contributions.push({
+      kind: item.kind,
+      source: item.source,
+      config: item.config,
+    });
+
+    return;
+  }
+
+  if (is_svelte_config_shape(item)) {
+    contributions.push({
+      kind: "plain",
+      source: "config",
+      config: item,
+    });
+
+    return;
+  }
+
+  if (!is_plugin_object(item)) {
+    return;
+  }
+
+  const contribution = get_plugin_config_contribution(item);
+
+  if (!contribution?.config) {
+    return;
+  }
+
+  contributions.push({
+    kind: "plain",
+    source: contribution.source ?? item.name,
+    config: contribution.config,
+  });
+}
+
+function to_svelte_config_contribution(
+  contribution: CollectedContribution,
+): ComposerSvelteConfig {
+  if (contribution.kind !== "kit") {
+    return contribution.config;
+  }
+
+  return direct_kit_config_to_svelte_config(contribution.config);
 }
 
 function append_contribution(
@@ -388,6 +546,29 @@ function append_plain_config(
   context.diagnostics.configs.push({
     source: "config",
     keys: Object.keys(config),
+  });
+}
+
+function append_plugin_config(
+  plugin: Plugin,
+  context: ComposeContext,
+): void {
+  const contribution = get_plugin_config_contribution(plugin);
+
+  if (!contribution?.config) {
+    return;
+  }
+
+  const source = contribution.source ?? plugin.name;
+
+  context.contributions.push({
+    kind: "plain",
+    source,
+    config: contribution.config,
+  });
+  context.diagnostics.configs.push({
+    source,
+    keys: Object.keys(contribution.config),
   });
 }
 
@@ -635,6 +816,12 @@ function is_typescript_config_hook_path(path: readonly string[]): boolean {
     joined_path === "typescript.config";
 }
 
+function is_direct_kit_svelte_key(key: string): boolean {
+  return direct_kit_svelte_keys.includes(
+    key as (typeof direct_kit_svelte_keys)[number],
+  );
+}
+
 function is_composer_contribution(
   value: unknown,
 ): value is ComposerContribution {
@@ -648,6 +835,19 @@ function is_svelte_config_shape(value: unknown): value is ComposerSvelteConfig {
 
 function is_plugin_object(value: unknown): value is Plugin {
   return is_plain_object(value) && typeof value.name === "string";
+}
+
+function get_plugin_config_contribution(
+  plugin: Plugin,
+): PluginConfigContribution | undefined {
+  const contribution =
+    (plugin as unknown as Record<string, unknown>)[plugin_config_key];
+
+  if (!is_plain_object(contribution)) {
+    return undefined;
+  }
+
+  return contribution;
 }
 
 function is_kit_slot(value: unknown): value is KitSlot {
@@ -676,6 +876,7 @@ function resolve_options(options: ComposeOptions): ResolvedComposeOptions {
   return {
     pre_order: options.pre_order ?? "strip",
     diagnostics: options.diagnostics ?? true,
+    svelte_config: options.svelte_config ?? "direct",
   };
 }
 

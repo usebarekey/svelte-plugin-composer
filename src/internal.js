@@ -1,10 +1,18 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 
 const contribution_key = "__svelte_plugin_composer";
+const plugin_config_key = "__svelte_plugin_composer_config";
 const kit_slot_key = "__svelte_plugin_composer_kit_slot";
 
 const svelte_config_keys = [
   "kit",
+  "extensions",
+  "preprocess",
+  "vitePlugin",
+  "compilerOptions",
+];
+
+const direct_kit_svelte_keys = [
   "extensions",
   "preprocess",
   "vitePlugin",
@@ -55,7 +63,11 @@ export function compose(items, options = {}) {
     append_item(item, output, context);
   }
 
-  if (context.contributions.length > 0 && context.kit_slots === 0) {
+  if (
+    resolved_options.svelte_config === "direct" &&
+    context.contributions.length > 0 &&
+    context.kit_slots === 0
+  ) {
     throw new Error(
       [
         "[svelte-plugin-composer] Svelte config contributions were provided,",
@@ -74,7 +86,11 @@ export function compose(items, options = {}) {
   );
   const direct_config = to_direct_sveltekit_config(merged_config);
   const plugins = output.map((item) =>
-    is_kit_slot(item) ? sveltekit(direct_config) : item
+    is_kit_slot(item)
+      ? resolved_options.svelte_config === "external"
+        ? sveltekit()
+        : sveltekit(direct_config)
+      : item
   );
 
   /**
@@ -134,6 +150,26 @@ export function svelte(config) {
 }
 
 /**
+ * Composes Svelte config fragments for `svelte.config.js`.
+ *
+ * @example
+ * ```js
+ * export default compose_config([sv(), ts(), kit({ adapter })]);
+ * ```
+ *
+ * @since 0.1.0
+ * @param {readonly unknown[]} items - Config helpers, composer contributions,
+ *   plugins with attached config, and nested presets to collect.
+ * @returns {Record<string, unknown>} A merged Svelte config object.
+ */
+export function compose_config(items) {
+  const contributions = collect_config_contributions(items);
+  const configs = contributions.map(to_svelte_config_contribution);
+
+  return merge_svelte_configs(configs);
+}
+
+/**
  * Merges Svelte config fragments using composer semantics.
  *
  * @example
@@ -190,6 +226,33 @@ export function to_direct_sveltekit_config(config) {
   return merge_plain_objects(direct_config, kit_config, []);
 }
 
+function direct_kit_config_to_svelte_config(config) {
+  const svelte_config = {};
+  const kit_config = {};
+
+  for (const [key, value] of Object.entries(config)) {
+    if (key === "kit" && is_plain_object(value)) {
+      Object.assign(kit_config, clone_value(value));
+
+      continue;
+    }
+
+    if (is_direct_kit_svelte_key(key)) {
+      svelte_config[key] = clone_value(value);
+
+      continue;
+    }
+
+    kit_config[key] = clone_value(value);
+  }
+
+  if (Object.keys(kit_config).length > 0) {
+    svelte_config.kit = kit_config;
+  }
+
+  return svelte_config;
+}
+
 function append_item(item, output, context) {
   if (!item) {
     return;
@@ -215,7 +278,79 @@ function append_item(item, output, context) {
     return;
   }
 
+  if (is_plugin_object(item)) {
+    append_plugin_config(item, context);
+  }
+
   output.push(normalize_plugin_option(item, context));
+}
+
+function collect_config_contributions(items) {
+  const contributions = [];
+
+  for (const item of items) {
+    collect_config_item(item, contributions);
+  }
+
+  return contributions;
+}
+
+function collect_config_item(item, contributions) {
+  if (!item) {
+    return;
+  }
+
+  if (Array.isArray(item)) {
+    for (const child of item) {
+      collect_config_item(child, contributions);
+    }
+
+    return;
+  }
+
+  if (is_composer_contribution(item)) {
+    contributions.push({
+      kind: item.kind,
+      source: item.source,
+      config: item.config,
+    });
+
+    return;
+  }
+
+  if (is_svelte_config_shape(item)) {
+    contributions.push({
+      kind: "plain",
+      source: "config",
+      config: item,
+    });
+
+    return;
+  }
+
+  if (!is_plugin_object(item)) {
+    return;
+  }
+
+  const contribution = get_plugin_config_contribution(item);
+
+  if (!contribution?.config) {
+    return;
+  }
+
+  contributions.push({
+    kind: "plain",
+    source: contribution.source ?? item.name,
+    config: contribution.config,
+  });
+}
+
+function to_svelte_config_contribution(contribution) {
+  if (contribution.kind !== "kit") {
+    return contribution.config;
+  }
+
+  return direct_kit_config_to_svelte_config(contribution.config);
 }
 
 function append_contribution(contribution, output, context) {
@@ -253,6 +388,26 @@ function append_plain_config(config, context) {
   context.diagnostics.configs.push({
     source: "config",
     keys: Object.keys(config),
+  });
+}
+
+function append_plugin_config(plugin, context) {
+  const contribution = get_plugin_config_contribution(plugin);
+
+  if (!contribution?.config) {
+    return;
+  }
+
+  const source = contribution.source ?? plugin.name;
+
+  context.contributions.push({
+    kind: "plain",
+    source,
+    config: contribution.config,
+  });
+  context.diagnostics.configs.push({
+    source,
+    keys: Object.keys(contribution.config),
   });
 }
 
@@ -474,6 +629,10 @@ function is_typescript_config_hook_path(path) {
     joined_path === "typescript.config";
 }
 
+function is_direct_kit_svelte_key(key) {
+  return direct_kit_svelte_keys.includes(key);
+}
+
 function is_composer_contribution(value) {
   return is_plain_object(value) && value[contribution_key] === true;
 }
@@ -485,6 +644,16 @@ function is_svelte_config_shape(value) {
 
 function is_plugin_object(value) {
   return is_plain_object(value) && typeof value.name === "string";
+}
+
+function get_plugin_config_contribution(plugin) {
+  const contribution = plugin[plugin_config_key];
+
+  if (!is_plain_object(contribution)) {
+    return undefined;
+  }
+
+  return contribution;
 }
 
 function is_kit_slot(value) {
@@ -513,6 +682,7 @@ function resolve_options(options) {
   return {
     pre_order: options.pre_order ?? "strip",
     diagnostics: options.diagnostics ?? true,
+    svelte_config: options.svelte_config ?? "direct",
   };
 }
 
