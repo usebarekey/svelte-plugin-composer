@@ -4,9 +4,17 @@ Compose a SvelteKit plugin stack without making every plugin fight over setup
 order.
 
 `svelte-plugin-composer` lets small helpers contribute SvelteKit config, then
-turns those fragments into one final `sveltekit(...)` call. It also keeps
-Sander-style plugin stacks predictable by flattening presets, preserving the
-order you wrote, and removing user-supplied `pre` priority by default.
+turns those fragments into one final `sveltekit(...)` call. It also keeps plugin
+stacks predictable by flattening presets, preserving the order you wrote, and
+removing user-supplied `pre` priority by default.
+
+## Install
+
+```sh
+npm install -D svelte-plugin-composer
+```
+
+## Setup
 
 ```ts
 import adapter from "@sveltejs/adapter-auto";
@@ -23,10 +31,21 @@ export default defineConfig({
     ts(),
     effect(),
     href(),
-    kit({ adapter: adapter() }),
+    kit({
+      adapter: adapter(),
+      compilerOptions: {
+        experimental: {
+          async: true,
+        },
+      },
+    }),
   ]),
 });
 ```
+
+`kit(...)` owns the final SvelteKit plugin call. Put config helpers and normal
+Vite plugins in `compose([...])`, then add one `kit(...)` item where the
+generated SvelteKit plugin group should appear.
 
 ## What It Does
 
@@ -100,3 +119,16 @@ compose([
 
 Config fragments only work when a `kit(...)` item is present, because the
 composer needs one final place to call SvelteKit with the merged config.
+
+Do not pass an already-created `sveltekit()` plugin into `compose([...])` when
+you want config merging. The composer cannot merge new config into a SvelteKit
+plugin that has already been created.
+
+## Notes
+
+Direct SvelteKit plugin config requires SvelteKit 2.62 or newer. If your project
+still uses `svelte.config.js`, keep using SvelteKit's normal setup until you can
+move the config into `kit(...)`.
+
+Priority normalization applies to the user plugins passed into `compose([...])`.
+SvelteKit's own internal plugins, created by `kit(...)`, are left alone.
