@@ -126,6 +126,10 @@ jobs:
                   echo "$HOME/.vite-plus/bin" >> "$GITHUB_PATH"
                   echo "VP_BIN=$HOME/.vite-plus/bin/vp" >> "$GITHUB_ENV"
 
+            - name: resolve_vite_plus_bin
+              shell: bash
+              run: echo "VP_BIN=$(command -v vp)" >> "$GITHUB_ENV"
+
             - name: install_dependencies
               run: corepack pnpm install --frozen-lockfile
 
