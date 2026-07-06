@@ -10,7 +10,7 @@ wrote, and removing user-supplied `pre` priority by default.
 ## Install
 
 ```sh
-npm install -D svelte-plugin-composer
+pnpm add -D svelte-plugin-composer
 ```
 
 ## Setup
@@ -22,16 +22,16 @@ import { ts } from "svelte-global-typescript";
 import { compose_config, kit } from "svelte-plugin-composer";
 
 export default compose_config([
-  sv(),
-  ts(),
-  kit({
-    adapter: adapter(),
-    compilerOptions: {
-      experimental: {
-        async: true,
-      },
-    },
-  }),
+	sv(),
+	ts(),
+	kit({
+		adapter: adapter(),
+		compilerOptions: {
+			experimental: {
+				async: true,
+			},
+		},
+	}),
 ]);
 ```
 
@@ -44,15 +44,9 @@ import { compose, kit } from "svelte-plugin-composer";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: compose([
-    sv(),
-    ts(),
-    effect(),
-    href(),
-    kit(),
-  ], {
-    svelte_config: "external",
-  }),
+	plugins: compose([sv(), ts(), effect(), href(), kit()], {
+		svelte_config: "external",
+	}),
 });
 ```
 
@@ -82,12 +76,7 @@ import { compose, compose_config, kit, svelte } from "svelte-plugin-composer";
 The same exports are also available from:
 
 ```ts
-import {
-  compose,
-  compose_config,
-  kit,
-  svelte,
-} from "svelte-plugin-composer/vite";
+import { compose, compose_config, kit, svelte } from "svelte-plugin-composer/vite";
 ```
 
 ### `compose(items, options?)`
@@ -102,9 +91,9 @@ Options:
 
 ```ts
 compose(items, {
-  pre_order: "strip",
-  diagnostics: true,
-  svelte_config: "direct",
+	pre_order: "strip",
+	diagnostics: true,
+	svelte_config: "direct",
 });
 ```
 
@@ -126,11 +115,7 @@ Use `"external"` when editor/LSP tooling needs the same generated config.
 Builds the Svelte config object for `svelte.config.js`.
 
 ```ts
-export default compose_config([
-  sv(),
-  ts(),
-  kit({ adapter }),
-]);
+export default compose_config([sv(), ts(), kit({ adapter })]);
 ```
 
 ### `kit(config?)`
@@ -139,10 +124,7 @@ Marks the point where the final `sveltekit(merged_config)` plugin group should
 appear.
 
 ```ts
-compose([
-  svelte({ extensions: [".svelte", ".sv"] }),
-  kit({ adapter }),
-]);
+compose([svelte({ extensions: [".svelte", ".sv"] }), kit({ adapter })]);
 ```
 
 ### `svelte(config)`
@@ -150,10 +132,7 @@ compose([
 Adds a Svelte config fragment without creating a plugin.
 
 ```ts
-compose([
-  svelte({ extensions: [".svelte", ".sv"] }),
-  kit({ adapter }),
-]);
+compose([svelte({ extensions: [".svelte", ".sv"] }), kit({ adapter })]);
 ```
 
 In direct mode, config fragments only work when a `kit(...)` item is present,

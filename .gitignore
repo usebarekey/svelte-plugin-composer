@@ -1,5 +1,6 @@
 .svelte-kit/
 .dist/
+dist/
 .tests/fixtures/
 build/
 node_modules/
