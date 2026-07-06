@@ -113,6 +113,12 @@ jobs:
             - name: enable_corepack
               run: corepack enable
 
+            - name: upgrade_npm
+              shell: bash
+              run: |
+                  cd "$RUNNER_TEMP"
+                  npm install -g npm@^11.15.0
+
             - name: install_vite_plus
               shell: bash
               run: |
@@ -182,8 +188,6 @@ jobs:
               run: corepack pnpm run build
 
             - name: publish_to_npm
-              env:
-                  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
               shell: bash
               run: |
                   if corepack pnpm view "$PACKAGE_NAME@$RELEASE_VERSION" version >/dev/null 2>&1; then
@@ -191,13 +195,16 @@ jobs:
                     exit 0
                   fi
 
-                  if [ -z "$NPM_TOKEN" ]; then
-                    echo "NPM_TOKEN is required to publish $PACKAGE_NAME@$RELEASE_VERSION." >&2
+                  PACK_DIR="$(mktemp -d)"
+                  corepack pnpm pack --pack-destination "$PACK_DIR"
+
+                  PACKAGE_TGZ="$(find "$PACK_DIR" -maxdepth 1 -name '*.tgz' -print -quit)"
+                  if [ -z "$PACKAGE_TGZ" ]; then
+                    echo "No package tarball was created in $PACK_DIR." >&2
                     exit 1
                   fi
 
-                  printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
-                  corepack pnpm publish --access public --provenance --no-git-checks
+                  npm --force publish "$PACKAGE_TGZ" --access public --provenance
 
             - name: create_or_update_release
               env:
