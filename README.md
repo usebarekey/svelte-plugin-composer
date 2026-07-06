@@ -5,7 +5,7 @@ order.
 
 `svelte-plugin-composer` lets small helpers contribute SvelteKit config and
 keeps plugin stacks predictable by flattening presets, preserving the order you
-wrote, and removing user-supplied `pre` priority by default.
+wrote, and removing `pre` priority from composed plugin groups by default.
 
 ## Install
 
@@ -64,8 +64,8 @@ by the composer while letting SvelteKit load that config normally.
 - concatenates `preprocess`
 - deep merges `compilerOptions`, `vitePlugin`, `kit`, and custom config objects
 - composes `kit.typescript.config` hooks in contribution order
-- strips user plugin `enforce: "pre"` and hook `order: "pre"` by default
-- leaves SvelteKit internals created by `kit(...)` alone
+- strips plugin `enforce: "pre"` and hook `order: "pre"` by default, including
+  nested plugins created by `kit(...)`
 
 ## API
 
@@ -150,5 +150,6 @@ Direct SvelteKit plugin config requires SvelteKit 2.62 or newer. Use
 `svelte_config: "external"` when you want `svelte.config.js` to remain the
 source of truth for editor tooling.
 
-Priority normalization applies to the user plugins passed into `compose([...])`.
-SvelteKit's own internal plugins, created by `kit(...)`, are left alone.
+Priority normalization walks nested plugin arrays and promised plugin options,
+including the SvelteKit plugin group created by `kit(...)`. Keep plugins outside
+`compose([...])` when their Vite priority is a required part of their behavior.

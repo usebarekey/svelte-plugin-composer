@@ -231,9 +231,7 @@ export function compose(
 	const direct_config = to_direct_sveltekit_config(merged_config);
 	const plugins: PluginOption[] = output.map(
 		(item): PluginOption =>
-			is_kit_slot(item)
-				? make_sveltekit_plugin_option(direct_config, resolved_options)
-				: item,
+			is_kit_slot(item) ? make_sveltekit_plugin_option(direct_config, context) : item,
 	);
 
 	/**
@@ -396,13 +394,14 @@ function direct_kit_config_to_svelte_config(config: ComposerSvelteConfig): Compo
 
 function make_sveltekit_plugin_option(
 	direct_config: ComposerSvelteConfig,
-	options: ResolvedComposeOptions,
+	context: ComposeContext,
 ): PluginOption {
-	if (options.svelte_config === "external") {
-		return sveltekit() as PluginOption;
-	}
+	const plugin_option =
+		context.options.svelte_config === "external"
+			? (sveltekit() as PluginOption)
+			: (sveltekit(direct_config) as PluginOption);
 
-	return sveltekit(direct_config) as PluginOption;
+	return normalize_plugin_option(plugin_option, context);
 }
 
 function append_item(

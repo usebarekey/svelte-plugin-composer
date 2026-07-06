@@ -80,6 +80,18 @@ describe("compose", () => {
 		expect(original_transform.order).toBe("pre");
 	});
 
+	test("strips pre priority from SvelteKit plugin groups", () => {
+		const output = compose([kit()], {
+			diagnostics: false,
+			svelte_config: "external",
+		});
+		const pre_plugins = flatten_plugins(output)
+			.filter((plugin) => plugin.enforce === "pre")
+			.map((plugin) => plugin.name);
+
+		expect(pre_plugins).toEqual([]);
+	});
+
 	test("preserves post priority", () => {
 		const handler = () => null;
 		const input: Plugin = {
@@ -337,6 +349,36 @@ function plugin_names(options: readonly PluginOption[]): string[] {
 	return options
 		.filter((option): option is Plugin => is_plugin(option))
 		.map((plugin) => plugin.name);
+}
+
+function flatten_plugins(options: readonly PluginOption[]): Plugin[] {
+	const plugins: Plugin[] = [];
+
+	for (const option of options) {
+		collect_plugin(option, plugins);
+	}
+
+	return plugins;
+}
+
+function collect_plugin(option: PluginOption, plugins: Plugin[]): void {
+	if (!option) {
+		return;
+	}
+
+	if (Array.isArray(option)) {
+		for (const child of option) {
+			collect_plugin(child, plugins);
+		}
+
+		return;
+	}
+
+	if (!is_plugin(option)) {
+		return;
+	}
+
+	plugins.push(option);
 }
 
 function is_plugin(option: PluginOption): option is Plugin {
