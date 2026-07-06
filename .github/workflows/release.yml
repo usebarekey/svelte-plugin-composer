@@ -104,6 +104,18 @@ jobs:
               with:
                   fetch-depth: 0
 
+            - name: checkout_global_typescript
+              uses: actions/checkout@v4
+              with:
+                  repository: usebarekey/svelte-global-typescript
+                  path: .integration/svelte-global-typescript
+
+            - name: checkout_sv_extension
+              uses: actions/checkout@v4
+              with:
+                  repository: usebarekey/svelte-sv-extension
+                  path: .integration/svelte-sv-extension
+
             - name: setup_node
               uses: actions/setup-node@v4
               with:
@@ -124,14 +136,33 @@ jobs:
               run: |
                   curl -fsSL https://vite.plus | bash
                   echo "$HOME/.vite-plus/bin" >> "$GITHUB_PATH"
-                  echo "VP_BIN=$HOME/.vite-plus/bin/vp" >> "$GITHUB_ENV"
+                  echo "$HOME/.vite-plus/current/bin" >> "$GITHUB_PATH"
 
             - name: resolve_vite_plus_bin
               shell: bash
-              run: echo "VP_BIN=$(command -v vp)" >> "$GITHUB_ENV"
+              run: |
+                  VP_PATH="$HOME/.vite-plus/current/bin/vp"
+
+                  if [ ! -x "$VP_PATH" ]; then
+                    VP_PATH="$(command -v vp)"
+                  fi
+
+                  if [ ! -x "$VP_PATH" ]; then
+                    echo "Could not resolve the Vite+ binary." >&2
+                    exit 1
+                  fi
+
+                  echo "VP_BIN=$VP_PATH" >> "$GITHUB_ENV"
+                  echo "Resolved Vite+ at $VP_PATH."
 
             - name: install_dependencies
               run: corepack pnpm install --frozen-lockfile
+
+            - name: install_integration_dependencies
+              shell: bash
+              run: |
+                  corepack pnpm --dir .integration/svelte-global-typescript install --frozen-lockfile
+                  corepack pnpm --dir .integration/svelte-sv-extension install --frozen-lockfile
 
             - name: resolve_release_meta
               id: release_meta
@@ -187,6 +218,9 @@ jobs:
               run: corepack pnpm run check
 
             - name: test
+              env:
+                  GLOBAL_TS_ROOT: ${{ github.workspace }}/.integration/svelte-global-typescript
+                  SV_EXTENSION_ROOT: ${{ github.workspace }}/.integration/svelte-sv-extension
               run: corepack pnpm run test
 
             - name: build

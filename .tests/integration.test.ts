@@ -1,14 +1,16 @@
-import { tmpdir } from "node:os";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { delimiter, dirname, join } from "node:path";
+import { describe, expect, test } from "vitest";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
-import { delimiter, dirname, join } from "node:path";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 const repo_root = dirname(fileURLToPath(import.meta.url));
 const package_root = dirname(repo_root);
-const global_ts_root = join(package_root, "..", "svelte-global-typescript");
-const sv_extension_root = join(package_root, "..", "svelte-sv-extension");
+const default_global_ts_root = join(package_root, "..", "svelte-global-typescript");
+const default_sv_extension_root = join(package_root, "..", "svelte-sv-extension");
+const global_ts_root = process.env.GLOBAL_TS_ROOT ?? default_global_ts_root;
+const sv_extension_root = process.env.SV_EXTENSION_ROOT ?? default_sv_extension_root;
 const vp_bin = process.env.VP_BIN ?? "vp";
 
 describe("SvelteKit integration", () => {
