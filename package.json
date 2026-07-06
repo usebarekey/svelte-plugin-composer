@@ -1,6 +1,6 @@
 {
 	"name": "svelte-plugin-composer",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Compose SvelteKit plugin stacks with config merging and Vite ordering policy.",
 	"license": "BSD-3-Clause",
 	"repository": {
